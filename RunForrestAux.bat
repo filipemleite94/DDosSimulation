@@ -1,0 +1,1 @@
+HostileServer.exe > log
