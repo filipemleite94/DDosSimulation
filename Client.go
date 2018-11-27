@@ -10,6 +10,7 @@ import(
     "net"
     "strconv"
     "math/rand"
+    "sort"
 )
 
 
@@ -42,7 +43,11 @@ func printNode(str string, node Node){
 var node Node
 var ServConn *net.UDPConn
 var CliConn[] *net.UDPConn
+var Children[] Node
 var index int
+
+var propDelay int
+var mSecPerPack time.Duration
 
 //State serializer part----------------------------------------------
 //-------------------------------------------------------------------
@@ -52,9 +57,14 @@ func printState(){
 }
 
 func initState(){
+    fAux,_:=strconv.ParseFloat(os.Args[2],64)
+    mSecPerPack = time.Duration(1000000*fAux)
+    propDelay,_ = strconv.Atoi(os.Args[3])
+    fmt.Println(fAux,mSecPerPack,propDelay)
     index,_ = strconv.Atoi(os.Args[1])
-    fileName = "Client"+strconv.Itoa(index)
+    fileName = "Data/Client"+strconv.Itoa(index)
     CliConn = make([]*net.UDPConn,0)
+    Children = make([]Node,0)
     conn:=connect("127.0.0.1", 10000)
     node = Node{0,time.Now().UTC(),"",10000+index}
     if _, err := os.Stat(fileName); os.IsNotExist(err) {
@@ -76,6 +86,13 @@ func initState(){
     if(msg.N.Port!=node.Port){
         conn = connect(msg.N.IP, msg.N.Port)
         sendMsg(Message{node,"Subscribe"}, conn)
+        ans,_:=doServerJob(conn)
+        for !(ans.N.Port==msg.N.Port && ans.N.IP==msg.N.IP) {
+            msg = ans
+            conn = connect(msg.N.IP, msg.N.Port)
+            sendMsg(Message{node,"Subscribe"}, conn)
+            ans,_=doServerJob(conn)
+        }
     }
 }
 
@@ -101,7 +118,7 @@ func doServerJob(conn *net.UDPConn) (Message,net.Addr){
 	msg := Message{}
     servErr = gob.NewDecoder(bytes.NewReader(recBuffer[:n])).Decode(&msg)
     checkError(servErr)
-    printNode("Receiving Message "+addr.String()+" "+msg.Command, msg.N)
+    //printNode("Receiving Message "+addr.String()+" "+msg.Command, msg.N)
     return msg,addr
 }
 
@@ -157,16 +174,30 @@ func connect(ip string, port int)*net.UDPConn{
 //-------------------------------------------------------------------
 func takeAction(msg Message, conn *net.UDPConn, addr net.Addr){
     if msg.Command=="Subscribe" {
-        CliConn=append(CliConn, connect(msg.N.IP, msg.N.Port))
+        if(len(CliConn)<2){
+            CliConn=append(CliConn, connect(msg.N.IP, msg.N.Port))
+            Children = append(Children, msg.N)
+            sendMsgTo(Message{node,"Welcome my child"}, conn, addr)
+        }else{
+            sendMsgTo(Message{Children[rand.Int()%2],"Try Him Young One"}, conn, addr)
+        }        
     } else{
         if msg.Command=="attack1" {
             go attack1(connect(msg.N.IP, msg.N.Port))
         } else if msg.Command=="attack2" {
             go attack2(msg.N.T,connect(msg.N.IP, msg.N.Port))
         }
-        time.Sleep(time.Duration(50+rand.Int()%101)*time.Millisecond)
-        for _,conn := range CliConn {
-            sendMsg(msg, conn)
+        mult := make([]int,len(CliConn))
+        for i,_:= range mult{
+            mult[i] = 50+rand.Int()%(propDelay+1)
+        }
+        sort.Ints(mult)
+        if(len(mult)==0){return}
+        time.Sleep(time.Duration(mult[0])*time.Millisecond)
+        sendMsg(msg, CliConn[0])
+        for i:=1; i<len(mult);i++{
+            time.Sleep(time.Duration(mult[i]-mult[i-1])*time.Millisecond)
+            go sendMsg(msg, CliConn[i])
         }
     }
 }
@@ -176,7 +207,7 @@ func takeAction(msg Message, conn *net.UDPConn, addr net.Addr){
 func attack1(conn *net.UDPConn){
     msg := Message{node, "You got pwned"}
     i:=1
-    ticker := time.NewTicker(time.Millisecond/2)
+    ticker := time.NewTicker(mSecPerPack)
     for _ = range ticker.C {
         msg.N.T=time.Now().UTC()
         msg.N.ID=i
@@ -186,8 +217,8 @@ func attack1(conn *net.UDPConn){
 }
 
 func attack2(t time.Time, conn *net.UDPConn){
+    ticker := time.NewTicker(mSecPerPack)
     time.Sleep(t.Sub(time.Now().UTC()))
-    ticker := time.NewTicker(time.Millisecond/2)
     msg := Message{node, "You got pwned"}
     i := 1
     for _ = range ticker.C {

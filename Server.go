@@ -50,6 +50,7 @@ var ServConn *net.UDPConn
 var lastConnectedID int
 var firstConnectedID int
 
+var isLine bool
 //Deal with user input-----------------------------------------------
 //-------------------------------------------------------------------
 var ch chan string
@@ -101,13 +102,14 @@ func printState(){
 
 func initState(){
     lastConnectedID = 0
+    isLine = os.Args[1]=="L"
     ch = make(chan string)
-    if _, err := os.Stat("ServerStatus"); os.IsNotExist(err) {
+    if _, err := os.Stat("Data/Server"); os.IsNotExist(err) {
         state = State{0, make(map[int]Node)}
         fmt.Println("Does not exist file yet")
         printState()
     }else{
-        byteArray,err := ioutil.ReadFile("ServerStatus")
+        byteArray,err := ioutil.ReadFile("Data/Server")
         checkError(err)
         err=gob.NewDecoder(bytes.NewReader(byteArray)).Decode(&state)
         checkError(err)
@@ -118,7 +120,7 @@ func initState(){
 func writeState(){
     var f *os.File
     var err error
-    f,err=os.OpenFile("ServerStatus", os.O_WRONLY|os.O_CREATE|os.O_TRUNC,0)
+    f,err=os.OpenFile("Data/Server", os.O_WRONLY|os.O_CREATE|os.O_TRUNC,0)
     var buf bytes.Buffer
     e:= gob.NewEncoder(&buf)
     err=e.Encode(state)
@@ -209,7 +211,11 @@ func takeAction(msg Message, conn *net.UDPConn, addr net.Addr){
             printNode("Joined back:", msg.N)
         }
         if(lastConnectedID>0){
-            msg.N = state.MapKeys[lastConnectedID]
+            if(isLine){
+                msg.N = state.MapKeys[lastConnectedID]
+            }else{
+                msg.N = state.MapKeys[firstConnectedID]
+            }
         }else{
             msg.N = state.MapKeys[id]
             firstConnectedID = id
