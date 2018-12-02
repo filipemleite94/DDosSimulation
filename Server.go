@@ -23,14 +23,14 @@ type Node struct{
     Port int
 }
 
-type State struct{
-    LastID int
-    MapKeys map[int]Node
-}
-
 type Message struct{
     N Node
 	Command string
+}
+
+type State struct{
+    LastID int
+    MapKeys map[int]Node
 }
 
 func checkError(err error) bool{
